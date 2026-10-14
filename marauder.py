@@ -1,4 +1,4 @@
 # old comment one
 # old comment two
-hello 7 world
+hello 6 world
 second line content
