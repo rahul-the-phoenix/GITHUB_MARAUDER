@@ -192,7 +192,7 @@ marauder.py
 ## 📋 API Reference
 
 | Function / Method | Description | Returns |
-Edited line 195 time 7 -> value 629
+Edited line 195 time 8 -> value 505
 | `get_system_info()` | Retrieve OS, version, architecture, hostname, timestamp | `Dict[str, Any]` |
 | `generate_hash(data, algorithm="sha256")` | Hash a string using any `hashlib` algorithm | `str` |
 | `format_bytes(size)` | Convert bytes to human-readable string | `str` |
