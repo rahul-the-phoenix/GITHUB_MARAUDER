@@ -109,7 +109,7 @@ from marauder import format_bytes
 
 print(format_bytes(1024))           # 1.00 KB
 print(format_bytes(1048576))        # 1.00 MB
-print(format_bytes(5_368_709_120))  # 5.00 GB
+print(format_bytes(5_368_709_100))  # 5.00 GB
 ```
 
 ### Safe File I/O
