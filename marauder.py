@@ -1,253 +1,363 @@
 #!/usr/bin/env python3
 """
-marauder.py - A sample Python utility module
-
-This module demonstrates various utility functions commonly used
-in automation scripts. It includes helpers for file handling,
-text processing, and system information retrieval.
-
-Author: Rahul Manna
-Created: 2026-10-14
-Version: 1.0.0
+GitHub Repository Editor
+- edit digit N        : picks one digit and changes it N times
+- edit commentout N   : picks a random comment line each time, edits N times
+- edit line N         : picks one line and changes its content N times
+- edit word N         : picks one word and replaces it N times
+Each edit is committed and pushed to GitHub separately.
 """
 
-import os
-import sys
-import json
+import subprocess
+import socket
 import time
 import random
-import hashlib
-import platform
-import subprocess
-from datetime import datetime
+import re
 from pathlib import Path
-from typing import List, Dict, Optional, Any
 
 
-# ============================================================
-# Configuration Constants
-# ============================================================
+class GitHubRepoEditor:
+    def __init__(self, repo_url, local_path="./github_repo"):
+        self.repo_url = repo_url
+        self.local_path = Path(local_path)
 
-APP_NAME = "Marauder"
-APP_VERSION = "1.0.0"
-DEFAULT_TIMEOUT = 30
-MAX_RETRIES = 3
-SUPPORTED_PLATFORMS = ["Windows", "Linux", "Darwin"]
-
-
-# ============================================================
-# Utility Functions
-# ============================================================
-
-def get_system_info() -> Dict[str, Any]:
-    """
-    Retrieve basic system information.
-    
-    Returns:
-        dict: A dictionary containing system details such as
-              OS name, version, architecture, and Python version.
-    """
-    return {
-        "os": platform.system(),
-        "version": platform.version(),
-        "architecture": platform.machine(),
-        "python_version": platform.python_version(),
-        "hostname": platform.node(),
-        "timestamp": datetime.now().isoformat()
-    }
-
-
-def generate_hash(data: str, algorithm: str = "sha256") -> str:
-    """
-    Generate a hash for the given data.
-    
-    Args:
-        data: The input string to hash.
-        algorithm: Hash algorithm (default: sha256).
-    
-    Returns:
-        str: Hexadecimal hash string.
-    """
-    hasher = hashlib.new(algorithm)
-    hasher.update(data.encode("utf-8"))
-    return hasher.hexdigest()
-
-
-def format_bytes(size: int) -> str:
-    """
-    Convert bytes to a human-readable format.
-    
-    Args:
-        size: Size in bytes.
-    
-    Returns:
-        str: Formatted size like '1.5 MB'.
-    """
-    units = ["B", "KB", "MB", "GB", "TB"]
-    index = 0
-    value = float(size)
-    
-    while value >= 1024 and index < len(units) - 1:
-        value /= 1024
-        index += 1
-    
-    return f"{value:.2f} {units[index]}"
-
-
-def read_file_safely(filepath: str) -> Optional[str]:
-    """
-    Read a file's content safely with error handling.
-    
-    Args:
-        filepath: Path to the file.
-    
-    Returns:
-        str or None: File content or None if error occurs.
-    """
-    try:
-        path = Path(filepath)
-        if not path.exists():
-            return None
-        return path.read_text(encoding="utf-8")
-    except (IOError, OSError) as e:
-        print(f"Error reading file: {e}")
-        return None
-
-
-def write_file_safely(filepath: str, content: str) -> bool:
-    """
-    Write content to a file safely.
-    
-    Args:
-        filepath: Destination file path.
-        content: Content to write.
-    
-    Returns:
-        bool: True on success, False otherwise.
-    """
-    try:
-        path = Path(filepath)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content, encoding="utf-8")
-        return True
-    except (IOError, OSError) as e:
-        print(f"Error writing file: {e}")
-        return False
-
-
-# ============================================================
-# Text Processing Helpers
-# ============================================================
-
-class TextProcessor:
-    """
-    A simple text processor with various utility methods.
-    """
-    
-    def __init__(self, text: str = ""):
-        self.text = text
-    
-    def word_count(self) -> int:
-        """Return the number of words in the text."""
-        return len(self.text.split())
-    
-    def char_count(self) -> int:
-        """Return the number of characters."""
-        return len(self.text)
-    
-    def line_count(self) -> int:
-        """Return the number of lines."""
-        return len(self.text.splitlines())
-    
-    def to_upper(self) -> str:
-        """Convert text to uppercase."""
-        return self.text.upper()
-    
-    def to_lower(self) -> str:
-        """Convert text to lowercase."""
-        return self.text.lower()
-    
-    def reverse(self) -> str:
-        """Reverse the text."""
-        return self.text[::-1]
-    
-    def replace_words(self, old: str, new: str) -> str:
-        """Replace all occurrences of a word."""
-        return self.text.replace(old, new)
-
-
-# ============================================================
-# File Operations
-# ============================================================
-
-class FileManager:
-    """
-    Handles file system operations.
-    """
-    
-    def __init__(self, base_path: str = "."):
-        self.base_path = Path(base_path)
-    
-    def list_files(self, extension: str = None) -> List[str]:
-        """List all files, optionally filtered by extension."""
-        if extension:
-            pattern = f"*.{extension.lstrip('.')}"
-            return [str(f) for f in self.base_path.rglob(pattern)]
-        return [str(f) for f in self.base_path.rglob("*") if f.is_file()]
-    
-    def file_size(self, filepath: str) -> int:
-        """Return file size in bytes."""
-        return Path(filepath).stat().st_size
-    
-    def delete_file(self, filepath: str) -> bool:
-        """Delete a file if it exists."""
+    # ---------- NETWORK ----------
+    def check_network_connection(self):
         try:
-            Path(filepath).unlink()
+            socket.create_connection(("github.com", 443), timeout=5)
             return True
-        except (FileNotFoundError, PermissionError):
+        except (socket.timeout, socket.error, OSError):
             return False
 
+    # ---------- CLONE / PULL ----------
+    def ensure_repo_cloned(self):
+        if not self.local_path.exists():
+            print(f"Cloning repository into {self.local_path}...")
+            try:
+                subprocess.run(
+                    ["git", "clone", self.repo_url, str(self.local_path)],
+                    check=True, capture_output=True, text=True, encoding='utf-8'
+                )
+                print("Repository cloned successfully.")
+            except subprocess.CalledProcessError as e:
+                print(f"Clone error: {e.stderr}")
+                return False
+        else:
+            try:
+                subprocess.run(
+                    ["git", "-C", str(self.local_path), "pull"],
+                    check=True, capture_output=True, text=True, encoding='utf-8'
+                )
+            except subprocess.CalledProcessError:
+                pass
+        return True
 
-# ============================================================
-# Main Entry Point
-# ============================================================
+    # ---------- FILE ----------
+    def find_editable_file(self):
+        extensions = ['.txt', '.md', '.py', '.js', '.html', '.css']
+        for ext in extensions:
+            files = list(self.local_path.rglob(f"*{ext}"))
+            if files:
+                return files[0]
 
-def main() -> int:
-    """
-    Main function to demonstrate the module functionality.
-    
-    Returns:
-        int: Exit code (0 = success).
-    """
-    print(f"=== {APP_NAME} v{APP_VERSION} ===")
-    print()
-    
-    # Display system information
-    info = get_system_info()
-    print("System Information:")
-    for key, value in info.items():
-        print(f"  {key}: {value}")
-    print()
-    
-    # Demonstrate text processing
-    sample = "Hello world this is a sample text 42"
-    processor = TextProcessor(sample)
-    
-    print("Text Processing Demo:")
-    print(f"  Original: {sample}")
-    print(f"  Words: {processor.word_count()}")
-    print(f"  Characters: {processor.char_count()}")
-    print(f"  Uppercase: {processor.to_upper()}")
-    print()
-    
-    # Demonstrate hashing
-    hash_value = generate_hash(sample)
-    print(f"SHA256: {hash_value}")
-    print()
-    
-    print("Done.")
-    return 0
+        new_file = self.local_path / "editable_file.txt"
+        new_file.write_text(
+            "Hello 1 world this is sample text\n"
+            "# old comment one\n"
+            "# old comment two\n"
+            "first line content\n"
+            "second line content\n",
+            encoding='utf-8'
+        )
+        return new_file
+
+    # ---------- COMMIT & PUSH ----------
+    def commit_and_push(self, message):
+        try:
+            subprocess.run(
+                ["git", "-C", str(self.local_path), "add", "."],
+                check=True, capture_output=True, text=True, encoding='utf-8'
+            )
+            result = subprocess.run(
+                ["git", "-C", str(self.local_path), "commit", "-m", message],
+                capture_output=True, text=True, encoding='utf-8'
+            )
+            if result.returncode != 0:
+                if "nothing to commit" in (result.stdout + result.stderr):
+                    return False, "nothing to commit"
+                return False, f"Commit error: {result.stderr}"
+
+            subprocess.run(
+                ["git", "-C", str(self.local_path), "push"],
+                check=True, capture_output=True, text=True, encoding='utf-8'
+            )
+            return True, "pushed successfully"
+
+        except subprocess.CalledProcessError as e:
+            return False, f"Git error: {e.stderr}"
+
+    # ---------- EDIT DIGIT ----------
+    def edit_digit(self, file_path, count):
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+
+        digits = list(re.finditer(r'\d', content))
+        if not digits:
+            return False, "No digit found in the file to edit."
+
+        target = random.choice(digits)
+        target_pos = target.start()
+        current_digit = target.group()
+        print(f"   Target digit: '{current_digit}' at position {target_pos}")
+
+        success_count = 0
+        for i in range(count):
+            new_digit = random.choice([d for d in '0123456789' if d != current_digit])
+
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+
+            content = content[:target_pos] + new_digit + content[target_pos + 1:]
+
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+
+            ok, msg = self.commit_and_push(
+                f"Edit digit: {current_digit} -> {new_digit} ({i+1}/{count})"
+            )
+            if ok:
+                success_count += 1
+                print(f"   [{i+1}/{count}] {current_digit} -> {new_digit}  ({msg})")
+            else:
+                print(f"   [{i+1}/{count}] Failed: {msg}")
+
+            current_digit = new_digit
+            time.sleep(0.5)
+
+        return True, f"One digit was changed {success_count} time(s)."
+
+    # ---------- EDIT COMMENTOUT ----------
+    def edit_commentout(self, file_path, count):
+        success_count = 0
+
+        for i in range(count):
+            with open(file_path, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+
+            comment_indexes = [
+                idx for idx, line in enumerate(lines)
+                if line.lstrip().startswith(('#', '//', '--'))
+            ]
+
+            if not comment_indexes:
+                if i == 0:
+                    return False, "No commented line found in the file."
+                break
+
+            idx = random.choice(comment_indexes)
+
+            stripped = lines[idx].lstrip()
+            if stripped.startswith('//'):
+                prefix = '//'
+            elif stripped.startswith('--'):
+                prefix = '--'
+            else:
+                prefix = '#'
+
+            new_line = (
+                f"{prefix} edited comment {random.randint(1000, 9999)} "
+                f"at {time.strftime('%H:%M:%S')}\n"
+            )
+            lines[idx] = new_line
+
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.writelines(lines)
+
+            ok, msg = self.commit_and_push(
+                f"Edit commentout: line {idx+1} ({i+1}/{count})"
+            )
+            if ok:
+                success_count += 1
+                print(f"   [{i+1}/{count}] line {idx+1} -> '{new_line.strip()}'  ({msg})")
+            else:
+                print(f"   [{i+1}/{count}] Failed: {msg}")
+
+            time.sleep(0.5)
+
+        return True, f"A random comment line was edited {success_count} time(s)."
+
+    # ---------- EDIT LINE ----------
+    def edit_line(self, file_path, count):
+        with open(file_path, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+
+        if not lines:
+            return False, "The file is empty."
+
+        target_idx = random.randrange(len(lines))
+        print(f"   Target line: {target_idx+1} -> '{lines[target_idx].strip()}'")
+
+        success_count = 0
+        for i in range(count):
+            with open(file_path, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+
+            new_content = (
+                f"Edited line {target_idx+1} time {i+1} "
+                f"-> value {random.randint(100, 999)}\n"
+            )
+            lines[target_idx] = new_content
+
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.writelines(lines)
+
+            ok, msg = self.commit_and_push(
+                f"Edit line {target_idx+1} ({i+1}/{count})"
+            )
+            if ok:
+                success_count += 1
+                print(f"   [{i+1}/{count}] {new_content.strip()}  ({msg})")
+            else:
+                print(f"   [{i+1}/{count}] Failed: {msg}")
+
+            time.sleep(0.5)
+
+        return True, f"One line was changed {success_count} time(s)."
+
+    # ---------- EDIT WORD ----------
+    def edit_word(self, file_path, count):
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+
+        words = list(re.finditer(r'\b[a-zA-Z]{2,}\b', content))
+        if not words:
+            return False, "No word found in the file."
+
+        target = random.choice(words)
+        target_start = target.start()
+        target_end = target.end()
+        current_word = target.group()
+        print(f"   Target word: '{current_word}' at position {target_start}")
+
+        pool = ['alpha', 'bravo', 'charlie', 'delta', 'echo',
+                'foxtrot', 'golf', 'hotel', 'india', 'juliet',
+                'kilo', 'lima', 'mike', 'november', 'oscar']
+
+        success_count = 0
+        for i in range(count):
+            new_word = random.choice([w for w in pool if w != current_word])
+
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+
+            content = content[:target_start] + new_word + content[target_end:]
+
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+
+            ok, msg = self.commit_and_push(
+                f"Edit word: {current_word} -> {new_word} ({i+1}/{count})"
+            )
+            if ok:
+                success_count += 1
+                print(f"   [{i+1}/{count}] {current_word} -> {new_word}  ({msg})")
+            else:
+                print(f"   [{i+1}/{count}] Failed: {msg}")
+
+            target_end = target_start + len(new_word)
+            current_word = new_word
+            time.sleep(0.5)
+
+        return True, f"One word was replaced {success_count} time(s)."
+
+    # ---------- COMMAND PROCESS ----------
+    def process_command(self, command):
+        parts = command.strip().split()
+
+        if len(parts) != 3 or parts[0].lower() != "edit":
+            return False, "Invalid format. Use: edit <type> <count>"
+
+        edit_type = parts[1].lower()
+        try:
+            count = int(parts[2])
+        except ValueError:
+            return False, "Count must be a number."
+
+        if count <= 0 or count > 100:
+            return False, "Count must be between 1 and 100."
+
+        file_path = self.find_editable_file()
+        if not file_path:
+            return False, "No editable file found."
+
+        if edit_type == "digit":
+            return self.edit_digit(file_path, count)
+        elif edit_type == "commentout":
+            return self.edit_commentout(file_path, count)
+        elif edit_type == "line":
+            return self.edit_line(file_path, count)
+        elif edit_type == "word":
+            return self.edit_word(file_path, count)
+        else:
+            return False, f"Unknown edit type: {edit_type}"
+
+
+# ============ MAIN ============
+def main():
+    REPO_URL = "https://github.com/rahul-the-phoenix/GITHUB_MARAUDER.git"
+
+    if "yourusername" in REPO_URL:
+        print("Please update REPO_URL in the script with your actual repository URL.")
+        return
+
+    editor = GitHubRepoEditor(REPO_URL)
+
+    print("=" * 55)
+    print(" GitHub Repository Editor (per-edit commit mode)")
+    print("=" * 55)
+    print("\nAvailable commands:")
+    print("  edit digit <N>       - change one digit N times")
+    print("  edit commentout <N>  - edit a random comment line N times")
+    print("  edit line <N>        - change one line N times")
+    print("  edit word <N>        - replace one word N times")
+    print("  quit / exit          - exit the program")
+    print("=" * 55)
+
+    if not editor.check_network_connection():
+        print("\nNo network connection... Please connect!")
+        return
+
+    print("\nNetwork connection established.")
+
+    if not editor.ensure_repo_cloned():
+        print("Failed to clone the repository.")
+        return
+
+    print(f"Repository ready at: {editor.local_path}")
+    print("\nReady for commands!\n")
+
+    while True:
+        try:
+            command = input("github-editor> ").strip()
+            if not command:
+                continue
+            if command.lower() in ['quit', 'exit', 'q']:
+                print("Goodbye!")
+                break
+
+            if not editor.check_network_connection():
+                print("No network connection... Please connect!")
+                continue
+
+            success, message = editor.process_command(command)
+            print(f"\n{'[OK]' if success else '[FAIL]'} {message}\n")
+
+        except KeyboardInterrupt:
+            print("\n\nGoodbye!")
+            break
+        except Exception as e:
+            print(f"Error: {e}")
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()
